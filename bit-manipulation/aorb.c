@@ -11,207 +11,233 @@
 
 
 /*****************************************************************************/
- 
- /**
-  * TODO
-  */
 
-/*****************************************************************************/
-
-#define DIGIT_2_BIT(d, x)		(uint8_t)(((d) & (1 << (x))) >> (x))
-
-#define BIT_SET(d, x)			((d) |= (1 << (x)))
-#define BIT_UNSET(d, x)			((d) &= ~(1 << (x)))
-
-
-/*****************************************************************************/
-
-static uint8_t __digit_2_uint8(char hex)
+static inline uint8_t __hex_ch_to_uint8(char hex)
 {
 	if (hex >= '0' && hex <= '9') {
 		return (uint8_t)(hex - '0');
 	} else if (hex >= 'A' && hex <= 'F') {
 		return (uint8_t)(hex - 'A' + 10);
-	} else if (hex >= 'a' && hex <= 'f') {
-		return (uint8_t)(hex - 'a' + 10);
 	} else {
 		assert(0);
 	}
 }
 
-
-static char __uint8_2_digit(uint8_t value)
+static inline uint8_t *__hex_str_to_uint8(char *s, int arr_len)
 {
-	if (value <= 9) {
-		return (char)('0' + value);
-	} else if (value <= 15) {
-		return (char)('A' + (value - 10));
+	int k = 0;
+	uint8_t *arr = NULL;
+
+	// 2 hex digit is one byte
+	arr = (uint8_t *)malloc(arr_len * sizeof(uint8_t));
+	if (!arr)
+		goto finish;
+
+	// convert 2 hex digits to one byte
+	if (strlen(s) % 2) {
+		k = 1;
+		arr[0] = 0 << 4 | __hex_ch_to_uint8(s[0]);
 	} else {
-		assert(0);
+		arr[0] = __hex_ch_to_uint8(s[0]) << 4 | __hex_ch_to_uint8(s[1]);
+	}
+
+	for (int i = 1; i < arr_len; i++)
+		arr[i] = __hex_ch_to_uint8(s[2*i-k]) << 4 | __hex_ch_to_uint8(s[2*i+1-k]);
+
+finish:
+	return arr;
+}
+
+
+/*****************************************************************************/
+
+static int __fix_computation(uint8_t *a, uint8_t *b, uint8_t *c, int arr_len)
+{
+	int k = 0;
+	int8_t bit;
+	uint8_t dif, mask;
+
+	for (int i = 0; i < arr_len; i++) {
+		dif = (a[i] | b[i]) ^ c[i];
+
+		//
+		if (!dif)
+			continue;
+
+		//
+		for (bit = 7; bit >= 0; bit--) {
+			mask = 1 << bit;
+
+			if (!(dif & mask))
+				continue;
+
+			// c = 0 -> a and b must be 0
+			if (!(c[i] & mask)) {
+				if (a[i] & mask) {
+					a[i] &= ~mask; k++;
+				}
+
+				if (b[i] & mask) {
+					b[i] &= ~mask; k++;
+				}
+
+				continue;
+			}
+
+			// c = 1 -> make b 0 to keep a minimum
+			b[i] |= mask; k++;
+		}
+	}
+
+	return k;
+}
+
+static void __min_computation(uint8_t *a, uint8_t *b, uint8_t *c, int arr_len,
+							int k)
+{
+	int8_t bit;
+	uint8_t mask;
+
+	for (int i = 0; i < arr_len; i++) {
+		//
+		if (!c[i])
+			continue;
+
+		//
+		for (bit = 7; bit >= 0; bit--) {
+			mask = 1 << bit;
+
+			if (!(c[i] & mask))
+				continue;
+
+			// a = 1, b = 1 => a = 0, b = 1
+			if ((a[i] & mask) && (b[i] & mask)) {
+				if (k - 1 < 0)
+					return;
+
+				a[i] &= ~mask; k--;
+				continue;
+			}
+
+			// a = 0, b = 1 => a = 1, b = 0
+			if ((a[i] & mask) && !(b[i] & mask)) {
+				if (k - 2 < 0)
+					continue;
+
+				a[i] &= ~mask; b[i] |= mask; k -= 2;
+			}
+		}
 	}
 }
+
+static void __print(uint8_t *a, uint8_t *b, int arr_len)
+{
+	bool leading_zero;
+
+	// a
+	leading_zero = true;
+	for (int i = 0; i < arr_len; i++) {
+		if (leading_zero) {
+			if (!a[i])
+				continue;
+
+			leading_zero = false;
+			printf("%X", a[i]);
+			continue;
+		}
+
+		leading_zero = false;
+		printf("%02X", a[i]);
+	}
+
+	if (leading_zero)
+		printf("0\n");
+	else
+		printf("\n");
+
+	// b
+	leading_zero = true;
+	for (int i = 0; i < arr_len; i++) {
+		if (leading_zero) {
+			if (!b[i])
+				continue;
+
+			leading_zero = false;
+			printf("%X", b[i]);
+			continue;
+		}
+
+		leading_zero = false;
+		printf("%02X", b[i]);
+	}
+
+	if (leading_zero)
+		printf("0\n");
+	else
+		printf("\n");
+}
+
+
+/*****************************************************************************/
 
 void aOrB(int k, char* a, char* b, char* c)
 {
-	int i, bit;
-	bool leading_zero;
-	uint8_t digit_a, digit_b, digit_c;
-	uint8_t bit_a, bit_b, bit_c, k_ab;
+	int arr_len, s_len;
+	uint8_t *aint, *bint, *cint;
+
+	//
+	s_len = strlen(a);
+	arr_len = s_len / 2 + s_len % 2;
 
 	/****************************************************************
-	 * A, B, C must have the same length.
+	 * Convert strings to uint8_t array.
 	 ***************************************************************/
-	if ((strlen(a) != strlen(b)) || (strlen(a) != strlen(c)))
-		goto error;
+	aint = __hex_str_to_uint8(a, arr_len);
+	if (!aint)
+		goto finish;
+
+	bint = __hex_str_to_uint8(b, arr_len);
+	if (!bint)
+		goto free_aint;
+
+	cint = __hex_str_to_uint8(c, arr_len);
+	if (!cint)
+		goto free_bint;
 
 	/****************************************************************
-	 * First iteration to switch wrong bits and track correct bits
-	 * that may be later updated to minimize the result.
+	 * Fix computation.
 	 ***************************************************************/
-	i = 0;
-	k_ab = 0;
-
-	for (i = 0; i < strlen(a); i++) {
-		digit_a = __digit_2_uint8(a[i]);
-		digit_b = __digit_2_uint8(b[i]);
-		digit_c = __digit_2_uint8(c[i]);
-
-		if ((digit_a | digit_b) == digit_c)
-			continue;
-
-		for (bit = 3; bit >= 0; bit--) {
-			bit_a = DIGIT_2_BIT(digit_a, bit);
-			bit_b = DIGIT_2_BIT(digit_b, bit);
-			bit_c = DIGIT_2_BIT(digit_c, bit);
-
-			if ((bit_a | bit_b) == bit_c)
-				continue;
-
-			/*******************************************************
-			 * Wrong bits.
-			 *
-			 * 1. bit_c = 0
-			 * 1.1 bit_a = 0 | bit_b = 1	(switch bit_b)
-			 * 1.2 bit_a = 1 | bit_b = 0	(switch bit_a)
-			 * 1.3 bit_a = 1 | bit_b = 1	(switch bit_a and bit_b).
-			 *
-			 * 2. bit_c = 1
-			 * 2.1 bit_a = 0 | bit_b = 0	(switch bit_b to min a)
-			 *******************************************************/
-			switch (bit_c) {
-			case 0:
-				if ((bit_a == 1) && (++k_ab > k))
-					goto error;
-
-				if ((bit_b == 1) && (++k_ab > k))
-					goto error;
-
-				BIT_UNSET(digit_a, bit);
-				BIT_UNSET(digit_b, bit);
-
-				break;
-			case 1:
-				if ((++k_ab > k))
-					goto error;
-
-				BIT_SET(digit_b, bit);
-
-				break;
-			default:
-				goto error;
-			}
-		}
-
-		// restore values in a and b
-		a[i] = __uint8_2_digit(digit_a);
-		b[i] = __uint8_2_digit(digit_b);
+	k -= __fix_computation(aint, bint, cint, arr_len);
+	if (k < 0) {
+		printf("-1\n");
+		goto free_cint;
 	}
 
 	/****************************************************************
-	 * If there are still remaining possibilities, we go back trying
-	 * to minimize the results.
-	 *
-	 * 1. bit_c = 1
-	 * 1.2 bit_a = 1 | bit_b = 0	-> bit_a = 0, bit_b = 1
-	 * 1.3 bit_a = 1 | bit_b = 1	-> bit_a = 0
+	 * Minimize a and b.
 	 ***************************************************************/
-	for (i = 0; i < strlen(a); i++) {
-		digit_a = __digit_2_uint8(a[i]);
-		digit_b = __digit_2_uint8(b[i]);
-		digit_c = __digit_2_uint8(c[i]);
+	__min_computation(aint, bint, cint, arr_len, k);
 
-		for (bit = 3; bit >= 0; bit--) {
-			bit_a = DIGIT_2_BIT(digit_a, bit);
-			bit_b = DIGIT_2_BIT(digit_b, bit);
-			bit_c = DIGIT_2_BIT(digit_c, bit);
+	/****************************************************************
+	 * Print.
+	 ***************************************************************/
+	__print(aint, bint, arr_len);
 
-			if (!bit_c)
-				continue;
-
-			//
-			if (bit_a == 1 && bit_b == 0) {
-				if (k_ab + 2 > k)
-					continue;	// hope for 1|1 to switch single bit
-
-				k_ab += 2;
-				BIT_UNSET(digit_a, bit);
-				BIT_SET(digit_b, bit);
-			}
-
-			if (bit_a == 1 && bit_b == 1) {
-				if (k_ab + 1 > k) {
-					a[i] = __uint8_2_digit(digit_a);
-					b[i] = __uint8_2_digit(digit_b);
-
-					goto print;	// there is nothing more we can do
-				}
-
-				k_ab++;
-				BIT_UNSET(digit_a, bit);
-			}
-		}
-
-		a[i] = __uint8_2_digit(digit_a);
-		b[i] = __uint8_2_digit(digit_b);
-	}
-
-print:
-	// print and skip leading 0 bytes
-	leading_zero = true;
-	for (i = 0; i < strlen(a); i++) {
-		if (a[i] == '0' && leading_zero)
-			continue;
-
-		if (a[i] != '0')
-			leading_zero = false;
-
-		printf("%c", a[i]);
-	}
-	if (leading_zero)
-		printf("0");
-	printf("\n");
-
-	leading_zero = true;
-	for (i = 0; i < strlen(a); i++) {
-		if (b[i] == '0' && leading_zero)
-			continue;
-
-		if (b[i] != '0')
-			leading_zero = false;
-
-		printf("%c", b[i]);
-	}
-	if (leading_zero)
-		printf("0");
-	printf("\n");
-
+free_cint:
+	free(cint);
+free_bint:
+	free(bint);
+free_aint:
+	free(aint);
+finish:
 	return;
-
-error:
-	printf("-1\n");
 }
 
 int main()
 {
+	aOrB(25, "B631EB5AE", "601C227E1", "707AC8792");
+	aOrB(12, "CAF7028FD", "59B5AC1CE", "CAF1B7B7F");
+	aOrB(3, "81B9BB94E", "8AB3CA95E", "8BBBFB95E");
+
 	return 0;
 }
