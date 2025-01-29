@@ -123,7 +123,7 @@ static void __do_combination(int *tmp, char *s_flipped, char *s, int n, int k,
 		for (int i = 0; i < k; i++)
 			s_flipped[tmp[i]] ^= 1;
 
-		*periodic_num += __is_periodic(s_flipped) ? 1 : 0; 		
+		*periodic_num += __is_periodic(s_flipped) ? 1 : 0;
 	}
 
 	// stop when reaching end of indexes
@@ -195,7 +195,6 @@ int stringTransmission(int k, char *s)
 
 	// n - not prime
 	possibilities -= __total_periodic(divisors, divisors_len, n, k, s);
-	
 
 finish:
 	free(divisors);

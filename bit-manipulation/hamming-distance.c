@@ -157,7 +157,7 @@ int main()
 			__hamming(s, l1, l2, len);
 			break;
 		default:
-			goto error;		
+			goto error;
 		}
 	}
 
